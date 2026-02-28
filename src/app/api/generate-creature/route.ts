@@ -8,48 +8,78 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Se necesitan 3 palabras" }, { status: 400 });
     }
 
-    const prompt = `Cosmic spirit creature for mobile game, anime art style like Digimon, ethereal celestial being inspired by these concepts: ${words.join(", ")}. The creature should embody these traits visually. Cute but mysterious, body made of galaxy swirls and stardust, glowing friendly eyes, floating ethereal form, vibrant anime illustration with purple and cosmic colors, kawaii cosmic entity. White background, centered composition, game character concept art.`;
+    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+    
+    if (!apiKey) {
+      console.error("No API key found");
+      return NextResponse.json({ error: "API key no configurada" }, { status: 500 });
+    }
 
-    // Call Gemini API
+    const prompt = `Create a cute cosmic spirit creature for a mobile game in anime art style like Digimon. The creature should be inspired by and embody these three concepts: ${words.join(", ")}. 
+
+Style requirements:
+- Ethereal celestial being made of galaxy swirls and stardust
+- Glowing friendly eyes, mysterious yet approachable
+- Floating ethereal form with cosmic energy
+- Vibrant anime illustration with purple, blue and cosmic colors
+- Kawaii cosmic entity style
+- Clean white or transparent background
+- Centered composition, game character concept art
+- High quality, detailed anime illustration`;
+
+    // Call Gemini API with imagen model
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp-image-generation:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
+          contents: [{
+            parts: [{ text: `Generate an image: ${prompt}` }]
+          }],
           generationConfig: {
-            responseModalities: ["image", "text"],
-            imageMimeType: "image/png",
+            responseModalities: ["TEXT", "IMAGE"],
           },
         }),
       }
     );
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error("Gemini error:", error);
-      return NextResponse.json({ error: "Error generando criatura" }, { status: 500 });
+      const errorText = await response.text();
+      console.error("Gemini API error:", response.status, errorText);
+      return NextResponse.json({ 
+        error: `Error de API: ${response.status}`,
+        details: errorText
+      }, { status: 500 });
     }
 
     const data = await response.json();
+    console.log("Gemini response:", JSON.stringify(data).slice(0, 500));
     
     // Extract image from response
     const parts = data.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find((p: { inlineData?: { data: string } }) => p.inlineData?.data);
+    const imagePart = parts.find((p: { inlineData?: { data: string; mimeType: string } }) => p.inlineData?.data);
     
     if (!imagePart?.inlineData?.data) {
-      return NextResponse.json({ error: "No se pudo generar la imagen" }, { status: 500 });
+      console.error("No image in response:", JSON.stringify(data).slice(0, 1000));
+      return NextResponse.json({ 
+        error: "No se pudo generar la imagen",
+        response: data
+      }, { status: 500 });
     }
 
+    const mimeType = imagePart.inlineData.mimeType || "image/png";
     const imageBase64 = imagePart.inlineData.data;
     
     return NextResponse.json({ 
-      image: `data:image/png;base64,${imageBase64}`,
+      image: `data:${mimeType};base64,${imageBase64}`,
       words 
     });
   } catch (error) {
     console.error("Error:", error);
-    return NextResponse.json({ error: "Error interno" }, { status: 500 });
+    return NextResponse.json({ 
+      error: "Error interno",
+      details: error instanceof Error ? error.message : "Unknown error"
+    }, { status: 500 });
   }
 }
