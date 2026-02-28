@@ -1,13 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-// Icons as simple SVG components
+// Types
+interface GameState {
+  creatureName: string;
+  creatureImage: string;
+  words: string[];
+  level: number;
+  xp: number;
+  day: number;
+  stats: Stats;
+  stage: "baby" | "teen" | "final" | "corrupt";
+  lastUpdate: number;
+  achievements: string[];
+  gamesPlayed: number;
+  interactions: number;
+}
+
+interface Stats {
+  hunger: number;
+  energy: number;
+  hygiene: number;
+  happiness: number;
+  bond: number;
+  morality: number;
+}
+
+// Icons
 const HomeIcon = () => (
   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -39,143 +64,232 @@ const ProfileIcon = () => (
   </svg>
 );
 
-// Creature SVG
-const Creature = ({ stage }: { stage: "baby" | "teen" | "final" | "corrupt" }) => {
-  const colors = {
-    baby: { primary: "#a78bfa", secondary: "#c4b5fd", glow: "#8b5cf6" },
-    teen: { primary: "#8b5cf6", secondary: "#a78bfa", glow: "#7c3aed" },
-    final: { primary: "#7c3aed", secondary: "#8b5cf6", glow: "#6d28d9" },
-    corrupt: { primary: "#1e1b4b", secondary: "#4c1d95", glow: "#dc2626" },
+// Onboarding Component
+const Onboarding = ({ onComplete }: { onComplete: (name: string, words: string[], image: string) => void }) => {
+  const [step, setStep] = useState(0);
+  const [name, setName] = useState("");
+  const [words, setWords] = useState(["", "", ""]);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleGenerate = async () => {
+    if (words.some(w => !w.trim())) {
+      setError("Completa las 3 palabras");
+      return;
+    }
+    
+    setGenerating(true);
+    setError("");
+    
+    try {
+      const response = await fetch("/api/generate-creature", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ words: words.map(w => w.trim()) }),
+      });
+      
+      if (!response.ok) throw new Error("Error generando");
+      
+      const data = await response.json();
+      onComplete(name || "Nebulito", words, data.image);
+    } catch {
+      setError("Error generando criatura. Intenta de nuevo.");
+    } finally {
+      setGenerating(false);
+    }
   };
-  
-  const c = colors[stage];
-  
+
   return (
-    <div className="relative float-animation pulse-glow">
-      <svg width="200" height="200" viewBox="0 0 200 200" className="drop-shadow-2xl">
-        {/* Outer glow */}
-        <defs>
-          <radialGradient id="creatureGlow" cx="50%" cy="50%" r="50%">
-            <stop offset="0%" stopColor={c.glow} stopOpacity="0.6" />
-            <stop offset="100%" stopColor={c.glow} stopOpacity="0" />
-          </radialGradient>
-          <radialGradient id="bodyGradient" cx="30%" cy="30%" r="70%">
-            <stop offset="0%" stopColor={c.secondary} />
-            <stop offset="100%" stopColor={c.primary} />
-          </radialGradient>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
-          </filter>
-        </defs>
-        
-        {/* Glow circle */}
-        <circle cx="100" cy="100" r="90" fill="url(#creatureGlow)" />
-        
-        {/* Main body */}
-        <ellipse cx="100" cy="110" rx="60" ry="50" fill="url(#bodyGradient)" filter="url(#glow)" />
-        
-        {/* Head */}
-        <circle cx="100" cy="70" r="45" fill="url(#bodyGradient)" filter="url(#glow)" />
-        
-        {/* Eyes */}
-        <ellipse cx="80" cy="65" rx="12" ry="14" fill="white" />
-        <ellipse cx="120" cy="65" rx="12" ry="14" fill="white" />
-        <circle cx="82" cy="67" r="6" fill={stage === "corrupt" ? "#dc2626" : "#1e1b4b"} />
-        <circle cx="122" cy="67" r="6" fill={stage === "corrupt" ? "#dc2626" : "#1e1b4b"} />
-        <circle cx="84" cy="64" r="2" fill="white" />
-        <circle cx="124" cy="64" r="2" fill="white" />
-        
-        {/* Mouth */}
-        <path 
-          d={stage === "corrupt" ? "M 85 90 Q 100 85 115 90" : "M 85 85 Q 100 95 115 85"} 
-          stroke={stage === "corrupt" ? "#dc2626" : "#1e1b4b"} 
-          strokeWidth="3" 
-          fill="none" 
-          strokeLinecap="round"
-        />
-        
-        {/* Cosmic sparkles */}
-        <circle cx="60" cy="40" r="2" fill="#fcd34d" className="animate-pulse" />
-        <circle cx="140" cy="50" r="1.5" fill="#fcd34d" className="animate-pulse" />
-        <circle cx="50" cy="120" r="1" fill="#fcd34d" className="animate-pulse" />
-        <circle cx="150" cy="130" r="2" fill="#fcd34d" className="animate-pulse" />
-        
-        {/* Ears/horns based on stage */}
-        {stage !== "baby" && (
-          <>
-            <ellipse cx="60" cy="35" rx="8" ry="15" fill={c.primary} transform="rotate(-20 60 35)" />
-            <ellipse cx="140" cy="35" rx="8" ry="15" fill={c.primary} transform="rotate(20 140 35)" />
-          </>
+    <div className="min-h-screen cosmic-bg flex items-center justify-center p-4">
+      <Card className="w-full max-w-md bg-white/10 backdrop-blur-md border-white/20 p-6">
+        {step === 0 && (
+          <div className="text-center space-y-6">
+            <div className="text-6xl mb-4">🌌</div>
+            <h1 className="text-2xl font-bold text-white">Cosmic Pet</h1>
+            <p className="text-white/70">Crea tu compañero cósmico único</p>
+            <Button 
+              onClick={() => setStep(1)} 
+              className="w-full bg-purple-600 hover:bg-purple-700"
+            >
+              Comenzar
+            </Button>
+          </div>
         )}
         
-        {stage === "final" && (
-          <path d="M 100 20 L 95 5 L 100 15 L 105 5 L 100 20" fill="#fcd34d" filter="url(#glow)" />
+        {step === 1 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-white text-center">¿Cómo se llamará?</h2>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Nombre de tu criatura"
+              className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              maxLength={20}
+            />
+            <Button 
+              onClick={() => setStep(2)} 
+              className="w-full bg-purple-600 hover:bg-purple-700"
+            >
+              Siguiente
+            </Button>
+          </div>
         )}
         
-        {stage === "corrupt" && (
-          <>
-            <path d="M 70 30 L 55 10" stroke="#dc2626" strokeWidth="3" />
-            <path d="M 130 30 L 145 10" stroke="#dc2626" strokeWidth="3" />
-          </>
+        {step === 2 && (
+          <div className="space-y-6">
+            <h2 className="text-xl font-bold text-white text-center">Define tu criatura</h2>
+            <p className="text-white/60 text-center text-sm">3 palabras que describan su esencia</p>
+            
+            <div className="space-y-3">
+              {[0, 1, 2].map((i) => (
+                <input
+                  key={i}
+                  type="text"
+                  value={words[i]}
+                  onChange={(e) => {
+                    const newWords = [...words];
+                    newWords[i] = e.target.value;
+                    setWords(newWords);
+                  }}
+                  placeholder={["ej: valiente", "ej: misterioso", "ej: luminoso"][i]}
+                  className="w-full p-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder:text-white/50 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  maxLength={20}
+                />
+              ))}
+            </div>
+            
+            {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+            
+            <Button 
+              onClick={handleGenerate} 
+              disabled={generating}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+            >
+              {generating ? (
+                <span className="flex items-center gap-2">
+                  <span className="animate-spin">✨</span> Generando criatura...
+                </span>
+              ) : (
+                "✨ Crear mi criatura"
+              )}
+            </Button>
+          </div>
         )}
-      </svg>
+      </Card>
     </div>
   );
 };
 
-// Screen Components
-const HomeScreen = ({ stage, stats }: { stage: "baby" | "teen" | "final" | "corrupt"; stats: typeof defaultStats }) => (
-  <div className="flex flex-col h-full safe-area-top safe-area-bottom">
-    {/* Header */}
-    <div className="px-4 pt-2 pb-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-white">Nebulito</h1>
-          <p className="text-sm text-purple-300">Nivel 7 • Bebé Cósmico</p>
-        </div>
-        <Badge variant="secondary" className="bg-purple-500/30 text-purple-200 border-purple-400/30">
-          Día 5
-        </Badge>
-      </div>
-    </div>
-    
-    {/* Creature Area */}
-    <div className="flex-1 flex items-center justify-center relative">
-      <div className="absolute inset-0 stars opacity-30" />
-      <Creature stage={stage} />
-    </div>
-    
-    {/* Quick Stats */}
-    <div className="px-4 pb-4">
-      <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4">
-        <div className="grid grid-cols-4 gap-3">
-          <StatMini label="Hambre" value={stats.hunger} color="bg-orange-500" />
-          <StatMini label="Energía" value={stats.energy} color="bg-blue-500" />
-          <StatMini label="Feliz" value={stats.happiness} color="bg-pink-500" />
-          <StatMini label="Vínculo" value={stats.bond} color="bg-purple-500" />
-        </div>
-      </Card>
-    </div>
-    
-    {/* Action Buttons */}
-    <div className="px-4 pb-4">
-      <div className="grid grid-cols-3 gap-3">
-        <Button variant="secondary" className="bg-orange-500/20 hover:bg-orange-500/30 border-orange-400/30 text-orange-200">
-          🍎 Alimentar
-        </Button>
-        <Button variant="secondary" className="bg-pink-500/20 hover:bg-pink-500/30 border-pink-400/30 text-pink-200">
-          🎮 Jugar
-        </Button>
-        <Button variant="secondary" className="bg-blue-500/20 hover:bg-blue-500/30 border-blue-400/30 text-blue-200">
-          💤 Dormir
-        </Button>
-      </div>
-    </div>
+// Creature Display Component
+const CreatureDisplay = ({ image, isAnimated = true }: { image: string; isAnimated?: boolean }) => (
+  <div className={`relative ${isAnimated ? 'float-animation pulse-glow' : ''}`}>
+    <img 
+      src={image} 
+      alt="Tu criatura" 
+      className="w-48 h-48 object-contain drop-shadow-2xl rounded-full"
+    />
   </div>
+);
+
+// Home Screen
+const HomeScreen = ({ 
+  game, 
+  onAction 
+}: { 
+  game: GameState;
+  onAction: (action: "feed" | "play" | "sleep" | "clean" | "pet") => void;
+}) => {
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
+  const handleAction = (action: "feed" | "play" | "sleep" | "clean" | "pet") => {
+    onAction(action);
+    const messages = {
+      feed: "¡Ñam ñam! 🍎",
+      play: "¡Qué divertido! 🎮",
+      sleep: "Zzz... 💤",
+      clean: "¡Brillando! ✨",
+      pet: "¡Le encanta! 💖"
+    };
+    setActionFeedback(messages[action]);
+    setTimeout(() => setActionFeedback(null), 1500);
+  };
+
+  return (
+    <div className="flex flex-col h-full safe-area-top safe-area-bottom">
+      {/* Header */}
+      <div className="px-4 pt-2 pb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-white">{game.creatureName}</h1>
+            <p className="text-sm text-purple-300">Nivel {game.level} • {getStageName(game.stage)}</p>
+          </div>
+          <Badge variant="secondary" className="bg-purple-500/30 text-purple-200 border-purple-400/30">
+            Día {game.day}
+          </Badge>
+        </div>
+      </div>
+      
+      {/* Creature Area */}
+      <div className="flex-1 flex items-center justify-center relative" onClick={() => handleAction("pet")}>
+        <div className="absolute inset-0 stars opacity-30" />
+        <CreatureDisplay image={game.creatureImage} />
+        
+        {/* Action Feedback */}
+        {actionFeedback && (
+          <div className="absolute top-1/3 text-4xl animate-bounce">
+            {actionFeedback}
+          </div>
+        )}
+      </div>
+      
+      {/* Quick Stats */}
+      <div className="px-4 pb-4">
+        <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4">
+          <div className="grid grid-cols-4 gap-3">
+            <StatMini label="Hambre" value={game.stats.hunger} color="bg-orange-500" />
+            <StatMini label="Energía" value={game.stats.energy} color="bg-blue-500" />
+            <StatMini label="Feliz" value={game.stats.happiness} color="bg-pink-500" />
+            <StatMini label="Vínculo" value={game.stats.bond} color="bg-purple-500" />
+          </div>
+        </Card>
+      </div>
+      
+      {/* XP Bar */}
+      <div className="px-4 pb-2">
+        <div className="flex items-center gap-2 text-xs text-white/60">
+          <span>XP</span>
+          <Progress value={(game.xp % 100)} className="h-1.5 flex-1 bg-white/10" indicatorClassName="bg-yellow-500" />
+          <span>{game.xp % 100}/100</span>
+        </div>
+      </div>
+      
+      {/* Action Buttons */}
+      <div className="px-4 pb-4">
+        <div className="grid grid-cols-4 gap-2">
+          <ActionButton icon="🍎" label="Alimentar" onClick={() => handleAction("feed")} disabled={game.stats.hunger >= 100} />
+          <ActionButton icon="🎮" label="Jugar" onClick={() => handleAction("play")} disabled={game.stats.energy < 10} />
+          <ActionButton icon="💤" label="Dormir" onClick={() => handleAction("sleep")} disabled={game.stats.energy >= 100} />
+          <ActionButton icon="🛁" label="Limpiar" onClick={() => handleAction("clean")} disabled={game.stats.hygiene >= 100} />
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ActionButton = ({ icon, label, onClick, disabled }: { icon: string; label: string; onClick: () => void; disabled?: boolean }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    className={`flex flex-col items-center justify-center p-3 rounded-xl transition-all ${
+      disabled 
+        ? 'bg-white/5 opacity-50 cursor-not-allowed' 
+        : 'bg-white/10 hover:bg-white/20 hover:scale-105 active:scale-95'
+    }`}
+  >
+    <span className="text-2xl mb-1">{icon}</span>
+    <span className="text-[10px] text-white/70">{label}</span>
+  </button>
 );
 
 const StatMini = ({ label, value, color }: { label: string; value: number; color: string }) => (
@@ -187,28 +301,28 @@ const StatMini = ({ label, value, color }: { label: string; value: number; color
   </div>
 );
 
-const StatsScreen = ({ stats }: { stats: typeof defaultStats }) => (
+// Stats Screen
+const StatsScreen = ({ game }: { game: GameState }) => (
   <div className="flex flex-col h-full safe-area-top safe-area-bottom p-4 overflow-auto">
     <h2 className="text-2xl font-bold text-white mb-6">Estadísticas</h2>
     
     <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-4">
       <h3 className="text-sm font-semibold text-purple-300 mb-4">Necesidades</h3>
       <div className="space-y-4">
-        <StatBar label="Hambre" value={stats.hunger} color="bg-orange-500" icon="🍎" />
-        <StatBar label="Energía" value={stats.energy} color="bg-blue-500" icon="⚡" />
-        <StatBar label="Higiene" value={stats.hygiene} color="bg-cyan-500" icon="🛁" />
-        <StatBar label="Felicidad" value={stats.happiness} color="bg-pink-500" icon="💖" />
-        <StatBar label="Vínculo" value={stats.bond} color="bg-purple-500" icon="✨" />
+        <StatBar label="Hambre" value={game.stats.hunger} color="bg-orange-500" icon="🍎" />
+        <StatBar label="Energía" value={game.stats.energy} color="bg-blue-500" icon="⚡" />
+        <StatBar label="Higiene" value={game.stats.hygiene} color="bg-cyan-500" icon="🛁" />
+        <StatBar label="Felicidad" value={game.stats.happiness} color="bg-pink-500" icon="💖" />
+        <StatBar label="Vínculo" value={game.stats.bond} color="bg-purple-500" icon="✨" />
       </div>
     </Card>
     
     <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-4">
-      <h3 className="text-sm font-semibold text-purple-300 mb-4">Atributos</h3>
-      <div className="grid grid-cols-2 gap-4">
-        <AttributeBox label="HP" value={80} max={100} />
-        <AttributeBox label="ATK" value={45} max={100} />
-        <AttributeBox label="DEF" value={55} max={100} />
-        <AttributeBox label="SPD" value={70} max={100} />
+      <h3 className="text-sm font-semibold text-purple-300 mb-3">Palabras de esencia</h3>
+      <div className="flex gap-2 flex-wrap">
+        {game.words.map((word, i) => (
+          <Badge key={i} className="bg-purple-500/30 text-purple-200">{word}</Badge>
+        ))}
       </div>
     </Card>
     
@@ -217,7 +331,7 @@ const StatsScreen = ({ stats }: { stats: typeof defaultStats }) => (
       <div className="relative h-4 bg-gradient-to-r from-purple-600 via-white/20 to-red-600 rounded-full">
         <div 
           className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full shadow-lg border-2 border-purple-400"
-          style={{ left: `calc(${stats.morality}% - 8px)` }}
+          style={{ left: `calc(${100 - game.stats.morality}% - 8px)` }}
         />
       </div>
       <div className="flex justify-between mt-2 text-xs">
@@ -232,77 +346,66 @@ const StatBar = ({ label, value, color, icon }: { label: string; value: number; 
   <div>
     <div className="flex justify-between items-center mb-1">
       <span className="text-sm text-white/80">{icon} {label}</span>
-      <span className="text-sm text-white/60">{value}%</span>
+      <span className="text-sm text-white/60">{Math.round(value)}%</span>
     </div>
     <Progress value={value} className="h-2 bg-white/10" indicatorClassName={color} />
   </div>
 );
 
-const AttributeBox = ({ label, value, max }: { label: string; value: number; max: number }) => (
-  <div className="bg-white/5 rounded-lg p-3 text-center">
-    <div className="text-2xl font-bold text-white">{value}</div>
-    <div className="text-xs text-white/50">{label}</div>
-  </div>
-);
-
-const GamesScreen = () => (
+// Mini Games Screen
+const GamesScreen = ({ onPlay }: { onPlay: (game: string) => void }) => (
   <div className="flex flex-col h-full safe-area-top safe-area-bottom p-4">
     <h2 className="text-2xl font-bold text-white mb-6">Mini Juegos</h2>
     
     <div className="grid grid-cols-2 gap-4">
       <GameCard 
         title="Atrapa Estrellas" 
-        description="Recolecta estrellas fugaces"
+        description="Toca las estrellas"
         emoji="⭐"
         color="from-yellow-500/20 to-orange-500/20"
         reward="+15 Felicidad"
+        onClick={() => onPlay("stars")}
       />
       <GameCard 
-        title="Puzzle Cósmico" 
-        description="Resuelve constelaciones"
-        emoji="🧩"
+        title="Quiz Cósmico" 
+        description="Responde preguntas"
+        emoji="🧠"
         color="from-blue-500/20 to-purple-500/20"
-        reward="+20 INT"
-      />
-      <GameCard 
-        title="Carrera Espacial" 
-        description="Esquiva asteroides"
-        emoji="🚀"
-        color="from-cyan-500/20 to-blue-500/20"
-        reward="+10 SPD"
+        reward="+20 Vínculo"
+        onClick={() => onPlay("quiz")}
       />
       <GameCard 
         title="Meditación" 
-        description="Conecta con el cosmos"
+        description="Mantén presionado"
         emoji="🧘"
         color="from-purple-500/20 to-pink-500/20"
-        reward="+25 Vínculo"
-        locked={false}
+        reward="+25 Energía"
+        onClick={() => onPlay("meditate")}
+      />
+      <GameCard 
+        title="Alimentar" 
+        description="Desliza comida"
+        emoji="🍎"
+        color="from-green-500/20 to-cyan-500/20"
+        reward="+30 Hambre"
+        onClick={() => onPlay("feed")}
       />
     </div>
-    
-    <Card className="mt-4 bg-gradient-to-r from-purple-500/20 to-pink-500/20 border-purple-400/30 p-4">
-      <div className="flex items-center gap-3">
-        <div className="text-3xl">🎁</div>
-        <div>
-          <h3 className="font-semibold text-white">Bonus Diario</h3>
-          <p className="text-sm text-white/60">Juega 3 juegos para desbloquear</p>
-        </div>
-        <Badge className="ml-auto bg-purple-500/30">1/3</Badge>
-      </div>
-    </Card>
   </div>
 );
 
-const GameCard = ({ title, description, emoji, color, reward, locked = false }: {
+const GameCard = ({ title, description, emoji, color, reward, onClick }: {
   title: string;
   description: string;
   emoji: string;
   color: string;
   reward: string;
-  locked?: boolean;
+  onClick: () => void;
 }) => (
-  <Card className={`bg-gradient-to-br ${color} border-white/10 p-4 ${locked ? 'opacity-50' : 'hover:scale-105 transition-transform cursor-pointer'}`}>
+  <Card 
+    className={`bg-gradient-to-br ${color} border-white/10 p-4 hover:scale-105 transition-transform cursor-pointer active:scale-95`}
+    onClick={onClick}
+  >
     <div className="text-4xl mb-2">{emoji}</div>
     <h3 className="font-semibold text-white text-sm">{title}</h3>
     <p className="text-xs text-white/50 mb-2">{description}</p>
@@ -312,159 +415,230 @@ const GameCard = ({ title, description, emoji, color, reward, locked = false }: 
   </Card>
 );
 
-const EvolutionScreen = () => (
-  <div className="flex flex-col h-full safe-area-top safe-area-bottom p-4 overflow-auto">
-    <h2 className="text-2xl font-bold text-white mb-2">Evolución</h2>
-    <p className="text-sm text-white/60 mb-6">Progreso hacia la siguiente etapa</p>
-    
-    {/* Evolution Progress */}
-    <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-6">
-      <div className="flex items-center gap-4 mb-4">
-        <div className="w-16 h-16 rounded-full bg-purple-500/30 flex items-center justify-center">
-          <span className="text-2xl">🌟</span>
-        </div>
-        <div className="flex-1">
-          <h3 className="font-semibold text-white">Nebulito → Astralux</h3>
-          <p className="text-sm text-white/60">Nivel 7 / 11</p>
-          <Progress value={64} className="h-2 mt-2 bg-white/10" />
-        </div>
+// Star Catch Mini Game
+const StarCatchGame = ({ onComplete }: { onComplete: (score: number) => void }) => {
+  const [stars, setStars] = useState<{id: number; x: number; y: number}[]>([]);
+  const [score, setScore] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(15);
+  const [gameOver, setGameOver] = useState(false);
+
+  useEffect(() => {
+    if (timeLeft <= 0) {
+      setGameOver(true);
+      return;
+    }
+    const timer = setInterval(() => setTimeLeft(t => t - 1), 1000);
+    return () => clearInterval(timer);
+  }, [timeLeft]);
+
+  useEffect(() => {
+    if (gameOver) return;
+    const interval = setInterval(() => {
+      setStars(prev => [...prev, { 
+        id: Date.now(), 
+        x: Math.random() * 80 + 10, 
+        y: Math.random() * 60 + 20 
+      }]);
+    }, 800);
+    return () => clearInterval(interval);
+  }, [gameOver]);
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setStars(prev => prev.slice(-8));
+    }, 2000);
+    return () => clearTimeout(timeout);
+  }, [stars]);
+
+  const catchStar = (id: number) => {
+    setStars(prev => prev.filter(s => s.id !== id));
+    setScore(s => s + 1);
+  };
+
+  if (gameOver) {
+    return (
+      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+        <Card className="bg-white/10 backdrop-blur-md border-white/20 p-8 text-center">
+          <div className="text-6xl mb-4">⭐</div>
+          <h2 className="text-2xl font-bold text-white mb-2">¡Juego terminado!</h2>
+          <p className="text-4xl text-yellow-400 font-bold mb-4">{score} estrellas</p>
+          <Button onClick={() => onComplete(score)} className="bg-purple-600 hover:bg-purple-700">
+            Continuar
+          </Button>
+        </Card>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 cosmic-bg z-50">
+      <div className="absolute top-4 left-4 right-4 flex justify-between items-center">
+        <Badge className="bg-yellow-500/30 text-yellow-200 text-lg px-4 py-2">
+          ⭐ {score}
+        </Badge>
+        <Badge className="bg-red-500/30 text-red-200 text-lg px-4 py-2">
+          ⏱️ {timeLeft}s
+        </Badge>
       </div>
       
-      <div className="grid grid-cols-3 gap-2 text-center">
-        <div className="bg-white/5 rounded-lg p-2">
-          <div className="text-green-400 text-sm">✓</div>
-          <div className="text-[10px] text-white/50">7 días cuidado</div>
-        </div>
-        <div className="bg-white/5 rounded-lg p-2">
-          <div className="text-yellow-400 text-sm">◐</div>
-          <div className="text-[10px] text-white/50">Vínculo 65%</div>
-        </div>
-        <div className="bg-white/5 rounded-lg p-2">
-          <div className="text-white/30 text-sm">○</div>
-          <div className="text-[10px] text-white/50">Nivel 11</div>
-        </div>
-      </div>
-    </Card>
-    
-    {/* Evolution Tree */}
-    <h3 className="text-sm font-semibold text-purple-300 mb-4">Árbol Evolutivo</h3>
-    
-    <div className="relative">
-      {/* Tree visualization */}
-      <div className="flex flex-col items-center gap-2">
-        <EvoNode name="Nebulito" stage="baby" active />
-        <div className="w-0.5 h-8 bg-purple-500/50" />
-        <EvoNode name="Astralux" stage="teen" locked />
-        <div className="flex items-center gap-8">
-          <div className="flex flex-col items-center">
-            <div className="w-0.5 h-8 bg-purple-500/30" />
-            <EvoNode name="Cosmara" stage="final" locked />
-          </div>
-          <div className="flex flex-col items-center">
-            <div className="w-0.5 h-8 bg-red-500/30" />
-            <EvoNode name="Voidara" stage="corrupt" locked />
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-);
-
-const EvoNode = ({ name, stage, active = false, locked = false }: {
-  name: string;
-  stage: "baby" | "teen" | "final" | "corrupt";
-  active?: boolean;
-  locked?: boolean;
-}) => {
-  const colors = {
-    baby: "from-purple-400 to-purple-600",
-    teen: "from-purple-500 to-indigo-600",
-    final: "from-yellow-400 to-purple-600",
-    corrupt: "from-red-600 to-purple-900",
-  };
-  
-  return (
-    <div className={`relative ${locked ? 'opacity-40' : ''}`}>
-      <div className={`w-20 h-20 rounded-full bg-gradient-to-br ${colors[stage]} flex items-center justify-center ${active ? 'ring-2 ring-white ring-offset-2 ring-offset-transparent' : ''}`}>
-        <span className="text-3xl">
-          {stage === "baby" && "🌟"}
-          {stage === "teen" && "⚡"}
-          {stage === "final" && "👑"}
-          {stage === "corrupt" && "🖤"}
-        </span>
-      </div>
-      <p className="text-center text-xs text-white/80 mt-2">{name}</p>
-      {locked && (
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="text-2xl">🔒</span>
-        </div>
-      )}
+      <div className="absolute inset-0 stars" />
+      
+      {stars.map(star => (
+        <button
+          key={star.id}
+          onClick={() => catchStar(star.id)}
+          className="absolute text-4xl transform -translate-x-1/2 -translate-y-1/2 hover:scale-125 transition-transform animate-pulse"
+          style={{ left: `${star.x}%`, top: `${star.y}%` }}
+        >
+          ⭐
+        </button>
+      ))}
+      
+      <p className="absolute bottom-8 left-0 right-0 text-center text-white/60">
+        ¡Toca las estrellas!
+      </p>
     </div>
   );
 };
 
-const ProfileScreen = () => (
-  <div className="flex flex-col h-full safe-area-top safe-area-bottom p-4">
-    <div className="flex items-center gap-4 mb-6">
-      <div className="w-20 h-20 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-3xl">
-        🧑‍🚀
-      </div>
-      <div>
-        <h2 className="text-xl font-bold text-white">Mateo</h2>
-        <p className="text-sm text-purple-300">Guardián Cósmico</p>
-        <Badge className="mt-1 bg-purple-500/30">Nivel 12</Badge>
+// Evolution Screen
+const EvolutionScreen = ({ game }: { game: GameState }) => {
+  const nextLevel = game.stage === "baby" ? 11 : game.stage === "teen" ? 26 : 50;
+  const progress = Math.min((game.level / nextLevel) * 100, 100);
+  
+  return (
+    <div className="flex flex-col h-full safe-area-top safe-area-bottom p-4 overflow-auto">
+      <h2 className="text-2xl font-bold text-white mb-2">Evolución</h2>
+      <p className="text-sm text-white/60 mb-6">Progreso hacia la siguiente etapa</p>
+      
+      <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-6">
+        <div className="flex items-center gap-4 mb-4">
+          <div className="w-16 h-16 rounded-full overflow-hidden">
+            <img src={game.creatureImage} alt="" className="w-full h-full object-cover" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-white">{getStageName(game.stage)} → {getNextStageName(game.stage)}</h3>
+            <p className="text-sm text-white/60">Nivel {game.level} / {nextLevel}</p>
+            <Progress value={progress} className="h-2 mt-2 bg-white/10" indicatorClassName="bg-purple-500" />
+          </div>
+        </div>
+        
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="bg-white/5 rounded-lg p-2">
+            <div className={`text-sm ${game.day >= 7 ? 'text-green-400' : 'text-white/30'}`}>
+              {game.day >= 7 ? '✓' : '○'}
+            </div>
+            <div className="text-[10px] text-white/50">7 días cuidado</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-2">
+            <div className={`text-sm ${game.stats.bond >= 50 ? 'text-green-400' : 'text-yellow-400'}`}>
+              {game.stats.bond >= 50 ? '✓' : '◐'}
+            </div>
+            <div className="text-[10px] text-white/50">Vínculo {Math.round(game.stats.bond)}%</div>
+          </div>
+          <div className="bg-white/5 rounded-lg p-2">
+            <div className={`text-sm ${game.level >= nextLevel ? 'text-green-400' : 'text-white/30'}`}>
+              {game.level >= nextLevel ? '✓' : '○'}
+            </div>
+            <div className="text-[10px] text-white/50">Nivel {nextLevel}</div>
+          </div>
+        </div>
+      </Card>
+      
+      {/* Evolution Tree */}
+      <h3 className="text-sm font-semibold text-purple-300 mb-4">Árbol Evolutivo</h3>
+      <div className="flex flex-col items-center gap-2">
+        <EvoNode name="Bebé" active={game.stage === "baby"} unlocked />
+        <div className="w-0.5 h-8 bg-purple-500/50" />
+        <EvoNode name="Joven" active={game.stage === "teen"} unlocked={game.level >= 11} />
+        <div className="flex items-center gap-8">
+          <div className="flex flex-col items-center">
+            <div className="w-0.5 h-8 bg-purple-500/30" />
+            <EvoNode name="Final" active={game.stage === "final"} unlocked={game.level >= 26 && game.stats.morality >= 60} />
+          </div>
+          <div className="flex flex-col items-center">
+            <div className="w-0.5 h-8 bg-red-500/30" />
+            <EvoNode name="Corrupto" active={game.stage === "corrupt"} unlocked={game.level >= 26 && game.stats.morality < 40} corrupt />
+          </div>
+        </div>
       </div>
     </div>
-    
-    <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-4">
-      <h3 className="text-sm font-semibold text-purple-300 mb-3">Logros</h3>
-      <div className="grid grid-cols-4 gap-3">
-        <Achievement emoji="🌟" name="Primer día" unlocked />
-        <Achievement emoji="🎮" name="Jugador" unlocked />
-        <Achievement emoji="💖" name="Amor" unlocked />
-        <Achievement emoji="⚡" name="Evolución" />
-        <Achievement emoji="🏆" name="Campeón" />
-        <Achievement emoji="🌙" name="Nocturno" />
-        <Achievement emoji="🎯" name="Perfecto" />
-        <Achievement emoji="✨" name="Maestro" />
+  );
+};
+
+const EvoNode = ({ name, active, unlocked, corrupt }: { name: string; active?: boolean; unlocked?: boolean; corrupt?: boolean }) => (
+  <div className={`${!unlocked ? 'opacity-40' : ''}`}>
+    <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+      active ? 'ring-2 ring-white ring-offset-2 ring-offset-transparent' : ''
+    } ${corrupt ? 'bg-gradient-to-br from-red-600 to-purple-900' : 'bg-gradient-to-br from-purple-500 to-indigo-600'}`}>
+      <span className="text-2xl">
+        {corrupt ? '🖤' : active ? '✨' : unlocked ? '⭐' : '🔒'}
+      </span>
+    </div>
+    <p className="text-center text-xs text-white/80 mt-2">{name}</p>
+  </div>
+);
+
+// Profile Screen
+const ProfileScreen = ({ game, onReset }: { game: GameState; onReset: () => void }) => (
+  <div className="flex flex-col h-full safe-area-top safe-area-bottom p-4">
+    <div className="flex items-center gap-4 mb-6">
+      <div className="w-20 h-20 rounded-full overflow-hidden">
+        <img src={game.creatureImage} alt="" className="w-full h-full object-cover" />
       </div>
-    </Card>
+      <div>
+        <h2 className="text-xl font-bold text-white">{game.creatureName}</h2>
+        <p className="text-sm text-purple-300">{getStageName(game.stage)}</p>
+        <Badge className="mt-1 bg-purple-500/30">Nivel {game.level}</Badge>
+      </div>
+    </div>
     
     <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-4">
       <h3 className="text-sm font-semibold text-purple-300 mb-3">Estadísticas</h3>
       <div className="grid grid-cols-2 gap-4 text-center">
         <div>
-          <div className="text-2xl font-bold text-white">5</div>
+          <div className="text-2xl font-bold text-white">{game.day}</div>
           <div className="text-xs text-white/50">Días jugados</div>
         </div>
         <div>
-          <div className="text-2xl font-bold text-white">23</div>
+          <div className="text-2xl font-bold text-white">{game.gamesPlayed}</div>
           <div className="text-xs text-white/50">Mini juegos</div>
         </div>
         <div>
-          <div className="text-2xl font-bold text-white">156</div>
+          <div className="text-2xl font-bold text-white">{game.interactions}</div>
           <div className="text-xs text-white/50">Interacciones</div>
         </div>
         <div>
-          <div className="text-2xl font-bold text-white">1</div>
-          <div className="text-xs text-white/50">Evoluciones</div>
+          <div className="text-2xl font-bold text-white">{game.xp}</div>
+          <div className="text-xs text-white/50">XP Total</div>
         </div>
       </div>
     </Card>
     
-    <div className="mt-auto space-y-2">
-      <Button variant="outline" className="w-full border-white/20 text-white/80">
-        ⚙️ Configuración
-      </Button>
-      <Button variant="outline" className="w-full border-white/20 text-white/80">
-        🛍️ Tienda
+    <Card className="bg-white/5 backdrop-blur-sm border-white/10 p-4 mb-4">
+      <h3 className="text-sm font-semibold text-purple-300 mb-3">Logros</h3>
+      <div className="grid grid-cols-4 gap-3">
+        <Achievement emoji="🌟" name="Primer día" unlocked={game.day >= 1} />
+        <Achievement emoji="🎮" name="Jugador" unlocked={game.gamesPlayed >= 5} />
+        <Achievement emoji="💖" name="Amigo" unlocked={game.stats.bond >= 50} />
+        <Achievement emoji="⚡" name="Nivel 10" unlocked={game.level >= 10} />
+      </div>
+    </Card>
+    
+    <div className="mt-auto">
+      <Button 
+        variant="outline" 
+        className="w-full border-red-500/50 text-red-400 hover:bg-red-500/20"
+        onClick={onReset}
+      >
+        🗑️ Reiniciar juego
       </Button>
     </div>
   </div>
 );
 
-const Achievement = ({ emoji, name, unlocked = false }: { emoji: string; name: string; unlocked?: boolean }) => (
-  <div className={`text-center ${unlocked ? '' : 'opacity-30'}`}>
+const Achievement = ({ emoji, name, unlocked }: { emoji: string; name: string; unlocked?: boolean }) => (
+  <div className={`text-center ${!unlocked ? 'opacity-30' : ''}`}>
     <div className="w-12 h-12 mx-auto rounded-full bg-white/10 flex items-center justify-center text-xl mb-1">
       {emoji}
     </div>
@@ -472,20 +646,189 @@ const Achievement = ({ emoji, name, unlocked = false }: { emoji: string; name: s
   </div>
 );
 
-// Default stats
-const defaultStats = {
-  hunger: 75,
-  energy: 60,
-  hygiene: 80,
-  happiness: 85,
-  bond: 65,
-  morality: 35, // 0 = full dark, 100 = full light, 50 = neutral
-};
+// Helper functions
+function getStageName(stage: string): string {
+  const names: Record<string, string> = {
+    baby: "Bebé Cósmico",
+    teen: "Joven Estelar", 
+    final: "Guardián Cósmico",
+    corrupt: "Ente del Vacío"
+  };
+  return names[stage] || stage;
+}
 
+function getNextStageName(stage: string): string {
+  const next: Record<string, string> = {
+    baby: "Joven Estelar",
+    teen: "Guardián/Corrupto",
+    final: "Máximo",
+    corrupt: "Redención"
+  };
+  return next[stage] || "???";
+}
+
+// Main App
 export default function Home() {
+  const [game, setGame] = useState<GameState | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("home");
-  const [stage] = useState<"baby" | "teen" | "final" | "corrupt">("baby");
-  const [stats] = useState(defaultStats);
+  const [miniGame, setMiniGame] = useState<string | null>(null);
+
+  // Load game from localStorage
+  useEffect(() => {
+    const saved = localStorage.getItem("cosmicPetGame");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setGame(parsed);
+    }
+    setLoading(false);
+  }, []);
+
+  // Save game to localStorage
+  useEffect(() => {
+    if (game) {
+      localStorage.setItem("cosmicPetGame", JSON.stringify(game));
+    }
+  }, [game]);
+
+  // Stat decay over time
+  useEffect(() => {
+    if (!game) return;
+    
+    const interval = setInterval(() => {
+      setGame(prev => {
+        if (!prev) return prev;
+        
+        const now = Date.now();
+        const elapsed = (now - prev.lastUpdate) / 1000 / 60; // minutes
+        
+        if (elapsed < 1) return prev;
+        
+        return {
+          ...prev,
+          lastUpdate: now,
+          stats: {
+            ...prev.stats,
+            hunger: Math.max(0, prev.stats.hunger - elapsed * 0.5),
+            energy: Math.max(0, prev.stats.energy - elapsed * 0.3),
+            hygiene: Math.max(0, prev.stats.hygiene - elapsed * 0.2),
+            happiness: Math.max(0, prev.stats.happiness - elapsed * 0.4),
+            bond: Math.max(0, prev.stats.bond - elapsed * 0.1),
+          }
+        };
+      });
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(interval);
+  }, [game]);
+
+  const handleCreateCreature = (name: string, words: string[], image: string) => {
+    const newGame: GameState = {
+      creatureName: name,
+      creatureImage: image,
+      words,
+      level: 1,
+      xp: 0,
+      day: 1,
+      stats: {
+        hunger: 80,
+        energy: 80,
+        hygiene: 100,
+        happiness: 90,
+        bond: 50,
+        morality: 70,
+      },
+      stage: "baby",
+      lastUpdate: Date.now(),
+      achievements: [],
+      gamesPlayed: 0,
+      interactions: 0,
+    };
+    setGame(newGame);
+  };
+
+  const handleAction = useCallback((action: "feed" | "play" | "sleep" | "clean" | "pet") => {
+    setGame(prev => {
+      if (!prev) return prev;
+      
+      const effects: Record<string, Partial<Stats>> = {
+        feed: { hunger: 25 },
+        play: { happiness: 20, energy: -15 },
+        sleep: { energy: 30 },
+        clean: { hygiene: 30 },
+        pet: { happiness: 10, bond: 5 },
+      };
+      
+      const effect = effects[action];
+      const newStats = { ...prev.stats };
+      
+      for (const [key, value] of Object.entries(effect)) {
+        const k = key as keyof Stats;
+        newStats[k] = Math.min(100, Math.max(0, newStats[k] + (value || 0)));
+      }
+      
+      // Good actions increase morality
+      if (action !== "pet") {
+        newStats.morality = Math.min(100, newStats.morality + 1);
+      }
+      
+      return {
+        ...prev,
+        stats: newStats,
+        xp: prev.xp + 5,
+        level: Math.floor((prev.xp + 5) / 100) + 1,
+        interactions: prev.interactions + 1,
+        lastUpdate: Date.now(),
+      };
+    });
+  }, []);
+
+  const handleMiniGameComplete = useCallback((score: number) => {
+    setGame(prev => {
+      if (!prev) return prev;
+      
+      const xpGain = score * 3;
+      const happinessGain = Math.min(30, score * 2);
+      const bondGain = Math.min(15, score);
+      
+      return {
+        ...prev,
+        stats: {
+          ...prev.stats,
+          happiness: Math.min(100, prev.stats.happiness + happinessGain),
+          bond: Math.min(100, prev.stats.bond + bondGain),
+        },
+        xp: prev.xp + xpGain,
+        level: Math.floor((prev.xp + xpGain) / 100) + 1,
+        gamesPlayed: prev.gamesPlayed + 1,
+        lastUpdate: Date.now(),
+      };
+    });
+    setMiniGame(null);
+  }, []);
+
+  const handleReset = () => {
+    if (confirm("¿Seguro que quieres reiniciar? Perderás todo el progreso.")) {
+      localStorage.removeItem("cosmicPetGame");
+      setGame(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen cosmic-bg flex items-center justify-center">
+        <div className="text-4xl animate-pulse">✨</div>
+      </div>
+    );
+  }
+
+  if (!game) {
+    return <Onboarding onComplete={handleCreateCreature} />;
+  }
+
+  if (miniGame === "stars") {
+    return <StarCatchGame onComplete={handleMiniGameComplete} />;
+  }
 
   return (
     <main className="min-h-screen cosmic-bg flex items-center justify-center p-4">
@@ -494,10 +837,12 @@ export default function Home() {
         <div className="phone-frame cosmic-bg relative">
           <div className="phone-notch" />
           <AppContent 
-            activeTab={activeTab} 
-            setActiveTab={setActiveTab} 
-            stage={stage} 
-            stats={stats} 
+            game={game}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            onAction={handleAction}
+            onPlayGame={setMiniGame}
+            onReset={handleReset}
           />
         </div>
       </div>
@@ -505,10 +850,12 @@ export default function Home() {
       {/* Mobile: Full screen */}
       <div className="md:hidden w-full h-screen">
         <AppContent 
-          activeTab={activeTab} 
-          setActiveTab={setActiveTab} 
-          stage={stage} 
-          stats={stats} 
+          game={game}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onAction={handleAction}
+          onPlayGame={setMiniGame}
+          onReset={handleReset}
         />
       </div>
     </main>
@@ -516,28 +863,30 @@ export default function Home() {
 }
 
 function AppContent({ 
+  game,
   activeTab, 
-  setActiveTab, 
-  stage, 
-  stats 
+  setActiveTab,
+  onAction,
+  onPlayGame,
+  onReset,
 }: { 
+  game: GameState;
   activeTab: string; 
   setActiveTab: (tab: string) => void;
-  stage: "baby" | "teen" | "final" | "corrupt";
-  stats: typeof defaultStats;
+  onAction: (action: "feed" | "play" | "sleep" | "clean" | "pet") => void;
+  onPlayGame: (game: string) => void;
+  onReset: () => void;
 }) {
   return (
     <div className="h-full flex flex-col">
-      {/* Screen Content */}
       <div className="flex-1 overflow-hidden">
-        {activeTab === "home" && <HomeScreen stage={stage} stats={stats} />}
-        {activeTab === "stats" && <StatsScreen stats={stats} />}
-        {activeTab === "games" && <GamesScreen />}
-        {activeTab === "evolution" && <EvolutionScreen />}
-        {activeTab === "profile" && <ProfileScreen />}
+        {activeTab === "home" && <HomeScreen game={game} onAction={onAction} />}
+        {activeTab === "stats" && <StatsScreen game={game} />}
+        {activeTab === "games" && <GamesScreen onPlay={onPlayGame} />}
+        {activeTab === "evolution" && <EvolutionScreen game={game} />}
+        {activeTab === "profile" && <ProfileScreen game={game} onReset={onReset} />}
       </div>
       
-      {/* Bottom Navigation */}
       <div className="bg-black/40 backdrop-blur-md border-t border-white/10 safe-area-bottom">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="w-full h-16 bg-transparent grid grid-cols-5 gap-0">
